@@ -1,0 +1,27 @@
+@Query("""
+    SELECT new com.desarrolloweb.medicitas.dto.MedicoResumenDTO(
+        m.id,
+        m.nombre,
+        m.especialidad,
+        COUNT(c.id),
+        SUM(CASE WHEN c.estado = com.desarrolloweb.medicitas.model.EstadoCita.ATENDIDA
+                 THEN 1L ELSE 0L END),
+        SUM(CASE WHEN c.estado = com.desarrolloweb.medicitas.model.EstadoCita.CANCELADA
+                 THEN 1L ELSE 0L END)
+    )
+    FROM Medico m
+    JOIN m.citas c
+    WHERE (:especialidad IS NULL
+           OR LOWER(m.especialidad) = LOWER(:especialidad))
+      AND (:estado IS NULL OR c.estado = :estado)
+      AND (:fechaDesde IS NULL OR c.fechaHora >= :fechaDesde)
+      AND (:fechaHasta IS NULL OR c.fechaHora <= :fechaHasta)
+    GROUP BY m.id, m.nombre, m.especialidad
+    ORDER BY COUNT(c.id) DESC
+    """)
+List<MedicoResumenDTO> obtenerResumenCitasPorMedico(
+        @Param("especialidad") String especialidad,
+        @Param("estado") EstadoCita estado,
+        @Param("fechaDesde") LocalDateTime fechaDesde,
+        @Param("fechaHasta") LocalDateTime fechaHasta
+);
