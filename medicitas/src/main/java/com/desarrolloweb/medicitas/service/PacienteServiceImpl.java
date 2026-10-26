@@ -1,5 +1,11 @@
 package com.desarrolloweb.medicitas.service;
 
+import java.util.List;
+
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
 import com.desarrolloweb.medicitas.dto.PacienteRequestDTO;
 import com.desarrolloweb.medicitas.dto.PacienteResponseDTO;
 import com.desarrolloweb.medicitas.exception.BusinessException;
@@ -8,11 +14,7 @@ import com.desarrolloweb.medicitas.mapper.PacienteMapper;
 import com.desarrolloweb.medicitas.model.Paciente;
 import com.desarrolloweb.medicitas.repository.CitaMedicaRepository;
 import com.desarrolloweb.medicitas.repository.PacienteRepository;
-
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-
-import java.util.List;
+import com.desarrolloweb.medicitas.security.SecurityUtils;
 
 @Service
 @Transactional
@@ -52,7 +54,11 @@ public class PacienteServiceImpl implements PacienteService {
     @Transactional(readOnly = true)
     public List<PacienteResponseDTO> listar() {
 
-        return pacienteRepository.findAll()
+        List<Paciente> pacientes = SecurityUtils.esMedico()
+                ? citaMedicaRepository.findPacientesByMedicoId(SecurityUtils.medicoIdActual())
+                : pacienteRepository.findAll();
+
+        return pacientes
                 .stream()
                 .map(PacienteMapper::toResponseDTO)
                 .toList();
@@ -61,6 +67,11 @@ public class PacienteServiceImpl implements PacienteService {
     @Override
     @Transactional(readOnly = true)
     public PacienteResponseDTO buscarPorId(Long id) {
+
+        if (SecurityUtils.esMedico()
+                && !citaMedicaRepository.existsByPaciente_IdAndMedico_Id(id, SecurityUtils.medicoIdActual())) {
+            throw new AccessDeniedException("Solo puede consultar pacientes relacionados con sus citas");
+        }
 
         Paciente paciente = obtenerPaciente(id);
 

@@ -1,8 +1,19 @@
 
 package com.desarrolloweb.medicitas.service;
 
+import java.time.LocalDateTime;
+import java.util.List;
+
+import org.springframework.data.domain.Sort;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
+
+import com.desarrolloweb.medicitas.dto.CitaMedicaFiltroDTO;
 import com.desarrolloweb.medicitas.dto.CitaMedicaRequestDTO;
 import com.desarrolloweb.medicitas.dto.CitaMedicaResponseDTO;
+import com.desarrolloweb.medicitas.dto.MedicoResumenDTO;
 import com.desarrolloweb.medicitas.exception.BusinessException;
 import com.desarrolloweb.medicitas.exception.ResourceNotFoundException;
 import com.desarrolloweb.medicitas.mapper.CitaMedicaMapper;
@@ -13,12 +24,8 @@ import com.desarrolloweb.medicitas.model.Paciente;
 import com.desarrolloweb.medicitas.repository.CitaMedicaRepository;
 import com.desarrolloweb.medicitas.repository.MedicoRepository;
 import com.desarrolloweb.medicitas.repository.PacienteRepository;
-
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-
-import java.time.LocalDateTime;
-import java.util.List;
+import com.desarrolloweb.medicitas.security.SecurityUtils;
+import com.desarrolloweb.medicitas.specification.CitaMedicaSpecifications;
 
 @Service
 @Transactional
@@ -58,9 +65,26 @@ public class CitaMedicaServiceImpl implements CitaMedicaService {
 
     @Override
     @Transactional(readOnly = true)
-    public List<CitaMedicaResponseDTO> listar() {
+    public List<CitaMedicaResponseDTO> listar(CitaMedicaFiltroDTO filtro) {
 
-        return citaMedicaRepository.findAll()
+        validarRangoFechas(filtro.fechaDesde(), filtro.fechaHasta());
+
+        CitaMedicaFiltroDTO filtroAplicado = filtro;
+
+        if (SecurityUtils.esMedico()) {
+            Long propio = SecurityUtils.medicoIdActual();
+
+            if (filtro.medicoId() != null && !filtro.medicoId().equals(propio)) {
+                throw new AccessDeniedException("Un médico solo puede consultar sus propias citas");
+            }
+
+            filtroAplicado = new CitaMedicaFiltroDTO(
+                    filtro.estado(), propio, filtro.pacienteId(), filtro.especialidad(),
+                    filtro.fechaDesde(), filtro.fechaHasta(), filtro.nombrePaciente());
+        }
+
+        return citaMedicaRepository
+                .findAll(CitaMedicaSpecifications.conFiltros(filtroAplicado), Sort.by("fechaHora"))
                 .stream()
                 .map(CitaMedicaMapper::toResponseDTO)
                 .toList();
@@ -68,9 +92,26 @@ public class CitaMedicaServiceImpl implements CitaMedicaService {
 
     @Override
     @Transactional(readOnly = true)
+    public List<MedicoResumenDTO> resumenPorMedico(
+            String especialidad,
+            EstadoCita estado,
+            LocalDateTime fechaDesde,
+            LocalDateTime fechaHasta) {
+
+        validarRangoFechas(fechaDesde, fechaHasta);
+
+        String esp = StringUtils.hasText(especialidad) ? especialidad.trim() : null;
+
+        return medicoRepository.obtenerResumenCitasPorMedico(esp, estado, fechaDesde, fechaHasta);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public CitaMedicaResponseDTO buscarPorId(Long id) {
 
         CitaMedica cita = obtenerCita(id);
+
+        validarAccesoMedico(cita);
 
         return CitaMedicaMapper.toResponseDTO(cita);
     }
@@ -107,6 +148,8 @@ public class CitaMedicaServiceImpl implements CitaMedicaService {
             EstadoCita nuevoEstado) {
 
         CitaMedica cita = obtenerCita(id);
+
+        validarAccesoMedico(cita);
 
         if (nuevoEstado == null) {
             throw new BusinessException("El nuevo estado es obligatorio");
@@ -172,6 +215,21 @@ public class CitaMedicaServiceImpl implements CitaMedicaService {
 
         if (fechaHora == null || !fechaHora.isAfter(LocalDateTime.now())) {
             throw new BusinessException("La fecha de la cita debe ser futura");
+        }
+    }
+
+    private void validarRangoFechas(LocalDateTime desde, LocalDateTime hasta) {
+
+        if (desde != null && hasta != null && desde.isAfter(hasta)) {
+            throw new BusinessException("La fecha inicial no puede ser posterior a la fecha final");
+        }
+    }
+
+    private void validarAccesoMedico(CitaMedica cita) {
+
+        if (SecurityUtils.esMedico()
+                && !cita.getMedico().getId().equals(SecurityUtils.medicoIdActual())) {
+            throw new AccessDeniedException("No tiene permiso sobre esta cita");
         }
     }
 }

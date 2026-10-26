@@ -1,5 +1,12 @@
 package com.desarrolloweb.medicitas.service;
 
+import java.time.LocalDateTime;
+import java.util.List;
+
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
 import com.desarrolloweb.medicitas.dto.MedicoRequestDTO;
 import com.desarrolloweb.medicitas.dto.MedicoResponseDTO;
 import com.desarrolloweb.medicitas.exception.BusinessException;
@@ -9,12 +16,7 @@ import com.desarrolloweb.medicitas.model.EstadoCita;
 import com.desarrolloweb.medicitas.model.Medico;
 import com.desarrolloweb.medicitas.repository.CitaMedicaRepository;
 import com.desarrolloweb.medicitas.repository.MedicoRepository;
-
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-
-import java.time.LocalDateTime;
-import java.util.List;
+import com.desarrolloweb.medicitas.security.SecurityUtils;
 
 @Service
 @Transactional
@@ -58,6 +60,10 @@ public class MedicoServiceImpl implements MedicoService {
     @Override
     @Transactional(readOnly = true)
     public MedicoResponseDTO buscarPorId(Long id) {
+        
+        if (SecurityUtils.esMedico() && !id.equals(SecurityUtils.medicoIdActual())) {
+            throw new AccessDeniedException("Un médico solo puede consultar su propio registro");
+        }
 
         Medico medico = obtenerMedico(id);
 
